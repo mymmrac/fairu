@@ -1,22 +1,50 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 type model struct {
-	path string
-	err  error
+	path      string
+	files     []os.FileInfo
+	fileNames []string
+	filter    filterer
+
+	err error
+}
+
+const maxArgs = 2
+
+func (m model) readDir() model {
+	m.files, m.err = ioutil.ReadDir(m.path)
+	if m.err != nil {
+		return m
+	}
+
+	m.fileNames = []string{}
+	for _, fi := range m.files {
+		if m.filter.filter(m.path, fi) {
+			m.fileNames = append(m.fileNames, fi.Name())
+		}
+	}
+	return m
 }
 
 func newModel() *model {
+	if len(os.Args) > maxArgs {
+		return &model{err: errors.New("too many arguments")}
+	}
+
 	path := "."
-	if len(os.Args) == 2 {
+	if len(os.Args) == maxArgs {
 		path = os.Args[1]
 	}
 
@@ -25,18 +53,23 @@ func newModel() *model {
 		return &model{err: err}
 	}
 
-	exist, err := exists(absPath)
+	info, err := os.Stat(path)
 	if err != nil {
 		return &model{err: err}
 	}
 
-	if !exist {
-		return &model{err: fmt.Errorf("file %s doesn't exist", absPath)}
+	if !info.IsDir() {
+		return &model{err: fmt.Errorf("%s is a file, expected directory", absPath)}
 	}
 
-	return &model{
-		path: absPath,
+	m := model{
+		path:   absPath,
+		filter: dotFilter(false),
 	}
+
+	m = m.readDir()
+
+	return &m
 }
 
 func (m model) Init() tea.Cmd {
@@ -68,7 +101,13 @@ func (m model) View() string {
 		return fmt.Sprintf("Error occurred: %v\n\nPress any key to exit.\n", m.err)
 	}
 
-	return fmt.Sprintf("Current path: %s\n", m.path)
+	s := strings.Builder{}
+
+	s.WriteString(fmt.Sprintf("Current path: %s\n", m.path))
+
+	s.WriteString(fmt.Sprintf("Files:\n%s\n", strings.Join(m.fileNames, "\n")))
+
+	return s.String()
 }
 
 func main() {
