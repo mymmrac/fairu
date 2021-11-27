@@ -3,12 +3,14 @@ package main
 import (
 	"errors"
 	"fmt"
+	"github.com/muesli/reflow/wrap"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 type level struct {
@@ -29,6 +31,8 @@ type model struct {
 	prevSelected int
 
 	filter filterer
+
+	width, height int
 
 	err error
 }
@@ -175,10 +179,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m = m.readLevels(prevPath)
 			}
 		}
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
 	}
 
 	return m, nil
 }
+
+var (
+	borderStyle = lipgloss.NewStyle().Border(lipgloss.NormalBorder(), true)
+)
 
 func (m model) View() string {
 	if m.err != nil {
@@ -187,35 +198,57 @@ func (m model) View() string {
 
 	s := strings.Builder{}
 
+	prevS := strings.Builder{}
+	currS := strings.Builder{}
+	nextS := strings.Builder{}
+
+	w := m.width - 2
+	h := m.height - 2
+
+	sidesWidth := w / 3
+	currOff := w - sidesWidth*3
+
+	centerWidth := sidesWidth + currOff - 2
+
 	if m.prevLvl != nil {
-		s.WriteString(fmt.Sprintf("Previous path: %s\n", m.prevLvl.path))
+		prevS.WriteString(fmt.Sprintf("%s\n\n", wrap.String(m.prevLvl.path, sidesWidth)))
 
 		for _, entry := range m.prevLvl.entries {
-			s.WriteString(fmt.Sprintf("%s\n", entry.Name()))
+			prevS.WriteString(fmt.Sprintf("%s\n", wrap.String(entry.Name(), sidesWidth)))
 		}
-
-		s.WriteString("\n")
 	}
 
-	s.WriteString(fmt.Sprintf("Current path: %s\n", m.currLvl.path))
+	currS.WriteString(fmt.Sprintf("%s\n\n", wrap.String(m.currLvl.path, centerWidth)))
 
 	for i, entry := range m.currLvl.entries {
 		if i == m.selected {
-			s.WriteString("* ")
+			currS.WriteString("* ")
 		}
-		s.WriteString(fmt.Sprintf("%s\n", entry.Name()))
+		currS.WriteString(fmt.Sprintf("%s\n", wrap.String(entry.Name(), centerWidth)))
 	}
 
 	if m.nextLvl != nil {
-		s.WriteString("\n")
-		s.WriteString(fmt.Sprintf("Next path: %s\n", m.nextLvl.path))
+		nextS.WriteString(fmt.Sprintf("%s\n\n", wrap.String(m.nextLvl.path, sidesWidth)))
 
 		for _, entry := range m.nextLvl.entries {
-			s.WriteString(fmt.Sprintf("%s\n", entry.Name()))
+			nextS.WriteString(fmt.Sprintf("%s\n", wrap.String(entry.Name(), sidesWidth)))
 		}
 	}
 
-	return s.String()
+	sidesStyle := lipgloss.NewStyle().
+		Width(sidesWidth).Height(h).
+		MaxHeight(h)
+
+	centerStyle := lipgloss.NewStyle().
+		Inherit(sidesStyle).
+		Border(lipgloss.NormalBorder(), false, true)
+
+	s.WriteString(lipgloss.JoinHorizontal(lipgloss.Left,
+		sidesStyle.Render(prevS.String()),
+		centerStyle.Render(currS.String()),
+		sidesStyle.Render(nextS.String())))
+
+	return borderStyle.Render(lipgloss.Place(w, h, lipgloss.Left, lipgloss.Top, s.String()))
 }
 
 func main() {
