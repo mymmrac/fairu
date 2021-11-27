@@ -16,12 +16,17 @@ type level struct {
 	entries []os.DirEntry
 }
 
+func (l level) nextPath(i int) string {
+	return filepath.Join(l.path, l.entries[i].Name())
+}
+
 type model struct {
 	prevLvl *level
 	currLvl *level
 	nextLvl *level
 
-	currentSelected int
+	selected     int
+	prevSelected int
 
 	filter filterer
 
@@ -65,23 +70,26 @@ func (m model) readLevels(path string) model {
 			m.err = err
 			return m
 		}
-	}
 
-	var nextPath string
-	for i, entry := range m.currLvl.entries {
-		if entry.IsDir() {
-			nextPath = filepath.Join(path, entry.Name())
-			m.currentSelected = i
-			break
+		for i, p := range m.prevLvl.entries {
+			if p.Name() == filepath.Base(path) {
+				m.prevSelected = i
+				break
+			}
 		}
+	} else {
+		m.prevLvl = nil
 	}
 
-	if nextPath != "" {
+	if len(m.currLvl.entries) > 0 && m.currLvl.entries[m.selected].IsDir() {
+		nextPath := m.currLvl.nextPath(m.selected)
 		m.nextLvl, err = m.readDir(nextPath)
 		if err != nil {
 			m.err = err
 			return m
 		}
+	} else {
+		m.nextLvl = nil
 	}
 
 	return m
@@ -140,8 +148,32 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch {
-		case key.Matches(msg, globalKeys.Quit):
+		case key.Matches(msg, globalKeys.Quit) || key.Matches(msg, forceQuitKey):
 			return m, tea.Quit
+		case key.Matches(msg, globalKeys.NextEntry):
+			m.selected++
+			if m.selected >= len(m.currLvl.entries) {
+				m.selected = 0
+			}
+			m = m.readLevels(m.currLvl.path)
+		case key.Matches(msg, globalKeys.PrevEntry):
+			m.selected--
+			if m.selected < 0 {
+				m.selected = len(m.currLvl.entries) - 1
+			}
+			m = m.readLevels(m.currLvl.path)
+		case key.Matches(msg, globalKeys.NextLvl):
+			if m.currLvl.entries[m.selected].IsDir() {
+				nextPath := m.currLvl.nextPath(m.selected)
+				m.selected = 0
+				m = m.readLevels(nextPath)
+			}
+		case key.Matches(msg, globalKeys.PrevLvl):
+			if m.prevLvl != nil {
+				prevPath := m.prevLvl.path
+				m.selected = m.prevSelected
+				m = m.readLevels(prevPath)
+			}
 		}
 	}
 
@@ -161,16 +193,21 @@ func (m model) View() string {
 		for _, entry := range m.prevLvl.entries {
 			s.WriteString(fmt.Sprintf("%s\n", entry.Name()))
 		}
+
+		s.WriteString("\n")
 	}
 
 	s.WriteString(fmt.Sprintf("Current path: %s\n", m.currLvl.path))
 
-	s.WriteString("Current files:\n")
-	for _, entry := range m.currLvl.entries {
+	for i, entry := range m.currLvl.entries {
+		if i == m.selected {
+			s.WriteString("* ")
+		}
 		s.WriteString(fmt.Sprintf("%s\n", entry.Name()))
 	}
 
 	if m.nextLvl != nil {
+		s.WriteString("\n")
 		s.WriteString(fmt.Sprintf("Next path: %s\n", m.nextLvl.path))
 
 		for _, entry := range m.nextLvl.entries {
