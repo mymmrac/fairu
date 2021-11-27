@@ -6,17 +6,17 @@ import (
 )
 
 type filterer interface {
-	filter(path string, fileInfo os.FileInfo) bool
+	filter(path string, entry os.DirEntry) bool
 }
 
-type filterFunc func(path string, fileInfo os.FileInfo) bool
+type filterFunc func(path string, entry os.DirEntry) bool
 
-func (f filterFunc) filter(path string, fileInfo os.FileInfo) bool {
-	return f(path, fileInfo)
+func (f filterFunc) filter(path string, entry os.DirEntry) bool {
+	return f(path, entry)
 }
 
 func dotFilter(includeDot bool) filterer {
-	return filterFunc(func(path string, fileInfo os.FileInfo) bool {
-		return includeDot || !strings.HasPrefix(fileInfo.Name(), ".")
+	return filterFunc(func(path string, entry os.DirEntry) bool {
+		return includeDot || !strings.HasPrefix(entry.Name(), ".")
 	})
 }
