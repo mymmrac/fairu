@@ -189,6 +189,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 var (
 	borderStyle = lipgloss.NewStyle().Border(lipgloss.NormalBorder(), true)
+	reversed    = lipgloss.NewStyle().Reverse(true)
 )
 
 func (m model) View() string {
@@ -205,7 +206,7 @@ func (m model) View() string {
 	w := m.width - 2
 	h := m.height - 2
 
-	sidesWidth := w / 3
+	sidesWidth := int(float64(w) / 3.0)
 	currOff := w - sidesWidth*3
 
 	centerWidth := sidesWidth + currOff - 2
@@ -221,10 +222,11 @@ func (m model) View() string {
 	currS.WriteString(fmt.Sprintf("%s\n\n", wrap.String(m.currLvl.path, centerWidth)))
 
 	for i, entry := range m.currLvl.entries {
+		currFile := wrap.String(entry.Name(), centerWidth)
 		if i == m.selected {
-			currS.WriteString("* ")
+			currFile = reversed.Width(centerWidth).Render(currFile)
 		}
-		currS.WriteString(fmt.Sprintf("%s\n", wrap.String(entry.Name(), centerWidth)))
+		currS.WriteString(currFile + "\n")
 	}
 
 	if m.nextLvl != nil {
@@ -240,7 +242,8 @@ func (m model) View() string {
 		MaxHeight(h)
 
 	centerStyle := lipgloss.NewStyle().
-		Inherit(sidesStyle).
+		Width(centerWidth).Height(h).
+		MaxHeight(h).
 		Border(lipgloss.NormalBorder(), false, true)
 
 	s.WriteString(lipgloss.JoinHorizontal(lipgloss.Left,
